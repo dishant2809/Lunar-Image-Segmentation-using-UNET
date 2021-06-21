@@ -8,48 +8,71 @@ from tensorflow.keras import Sequential
 from tensorflow.keras.optimizers import SGD, Adam
 import numpy as np
 import cv2
+import os
 from matplotlib import pyplot as plt
 from main import UNET
 from data_loader import Dataset
 from utils import *
+from tqdm import *
+
+im = 'C:/Users/vedant/ML&AI/Project/vedant/Semantic segmentation dataset/Tile 1/images'
+mk = 'C:/Users/vedant/ML&AI/Project/vedant/Semantic segmentation dataset/Tile 1/masks'
 
 
-class FIT(keras.Model):
-    def __init__(self,model):
-        super(FIT,self).__init__()
-        self.model = model
-        
-    def train_step(self,data):
-        x,y = data
-        
+
+# Defining custom model fit in simple way possible
+
+def train(data, model, optimizer, loss, metrics):
+    loop = tqdm(data,leave=True)
+    for idx,(img,mask) in enumerate(loop):
         with tf.GradientTape() as tape:
-            y_pred = model.forward(x)
-            loss = self.compiled_loss(y,y_pred)
+            ypred = model(img)
+            ls = loss(mask,ypred)
+            #metrics.reset_states()
+        gradients = tape.gradient(ls, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients,model.trainable_variables))
         
-        training_vars = self.trainable_variables
-        gradients = tape.gradient(loss, training_vars)
+        metrics.update_state(mask,ypred)
+        print({m.name:m.result() for m in metrics})
         
-        self.optimizer.apply_gradients(zip(gradients,training_vars))
-        self.compiled_metrics.update_state(y,y_pred)
+        metrics.reset_states()
+        return i
+        #return gradients
+
+
+epochs = 50
+
+
+# Direct using tf.Gradienttape to train model
+
+for i in range(epochs):
+    loop = tqdm(Dataset(im,mk),leave=True)
+    for idx, (img,mask) in enumerate(loop):
+        with tf.GradientTape() as tape:
+            ypred = model(img)
+            ls = loss(mask,ypred)
+            gradients = tape.gradient(ls, model.trainable_variables)
         
-        return {m.name : m.result() for m in self.metrics}
-    
+        #metrics.reset_states()
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        #metrics.update_state(mask,ypred)
+        
+        print(i)
+        
+        
             
 
+
+
+
+
+
+
 model = UNET()
-training = FIT(model)
-training.compile(
-    optimizer=Adam(0.0001,0.05),
-    loss = keras.losses.BinaryCrossentropy(),
-    metrics=['accuracy']
-    )
+optimizer =  tf.keras.optimizers.Adam()
+loss = tf.keras.losses.BinaryCrossentropy()
+metrics = tf.keras.metrics.CategoricalAccuracy()
 
-ig = 'vedant/Semantic segmentation dataset/Tile 1/images'
-mk = 'vedant/Semantic segmentation dataset/Tile 1/masks'
+train(Dataset(im, mk),model,optimizer,loss,metrics)
 
-img,mask = get_loaders(ig, mk)
-mask.shape
-
-
-training.fit(img,mask,epochs=2)
 
